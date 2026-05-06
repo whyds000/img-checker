@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string>
+#include <iostream>
 #include <jpeglib.h>
 #include <setjmp.h>
 #include <tiffio.h>
@@ -16,6 +17,7 @@ METHODDEF(void) my_error_exit(j_common_ptr cinfo) {
     longjmp(myerr->setjmp_buffer, 1);
 }
 
+// ---------------- JPEG 检测 ----------------
 bool check_jpeg(const char* file) {
     FILE* fp = fopen(file, "rb");
     if (!fp) return false;
@@ -35,8 +37,17 @@ bool check_jpeg(const char* file) {
     jpeg_create_decompress(&cinfo);
     jpeg_stdio_src(&cinfo, fp);
 
-    jpeg_read_header(&cinfo, TRUE);
-    jpeg_start_decompress(&cinfo);
+    if (jpeg_read_header(&cinfo, TRUE) != JPEG_HEADER_OK) {
+        jpeg_destroy_decompress(&cinfo);
+        fclose(fp);
+        return false;
+    }
+
+    if (!jpeg_start_decompress(&cinfo)) {
+        jpeg_destroy_decompress(&cinfo);
+        fclose(fp);
+        return false;
+    }
 
     JSAMPARRAY buffer = (*cinfo.mem->alloc_sarray)(
         (j_common_ptr)&cinfo,
@@ -56,16 +67,29 @@ bool check_jpeg(const char* file) {
     return true;
 }
 
+// ---------------- TIFF 检测 ----------------
 bool check_tiff(const char* file) {
     TIFF* tif = TIFFOpen(file, "r");
     if (!tif) return false;
 
     do {
         uint32 w, h;
-        TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w);
-        TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h);
+
+        if (!TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &w)) {
+            TIFFClose(tif);
+            return false;
+        }
+
+        if (!TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &h)) {
+            TIFFClose(tif);
+            return false;
+        }
 
         uint32* buf = (uint32*)_TIFFmalloc(w * h * sizeof(uint32));
+        if (!buf) {
+            TIFFClose(tif);
+            return false;
+        }
 
         if (!TIFFReadRGBAImage(tif, w, h, buf, 0)) {
             _TIFFfree(buf);
@@ -81,19 +105,38 @@ bool check_tiff(const char* file) {
     return true;
 }
 
+// ---------------- main ----------------
 int main(int argc, char** argv) {
-    if (argc < 2) return 1;
+    if (argc < 2) {
+        std::cout << "{\"ok\":false,\"error\":\"no_file\"}" << std::endl;
+        return 1;
+    }
 
     std::string file = argv[1];
     std::string ext = file.substr(file.find_last_of("."));
 
     bool ok = false;
+    std::string type = "unknown";
 
     if (ext == ".jpg" || ext == ".jpeg") {
+        type = "jpeg";
         ok = check_jpeg(file.c_str());
-    } else if (ext == ".tif" || ext == ".tiff") {
+    }
+    else if (ext == ".tif" || ext == ".tiff") {
+        type = "tiff";
         ok = check_tiff(file.c_str());
     }
+    else {
+        std::cout << "{\"ok\":false,\"error\":\"unsupported_format\"}" << std::endl;
+        return 1;
+    }
+
+    // ⭐关键：JSON输出给 Node
+    std::cout
+        << "{\"ok\":" << (ok ? "true" : "false")
+        << ",\"file\":\"" << file
+        << "\",\"type\":\"" << type
+        << "\"}" << std::endl;
 
     return ok ? 0 : 1;
 }

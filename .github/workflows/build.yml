@@ -1,0 +1,38 @@
+name: build-windows-exe
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install vcpkg
+      run: |
+        git clone https://github.com/microsoft/vcpkg
+        .\vcpkg\bootstrap-vcpkg.bat
+
+    - name: Install deps
+      run: |
+        .\vcpkg\vcpkg install libjpeg-turbo:x64-windows-static
+        .\vcpkg\vcpkg install libtiff:x64-windows-static
+
+    - name: Configure
+      run: |
+        cmake -B build -S . ^
+        -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake ^
+        -DVCPKG_TARGET_TRIPLET=x64-windows-static
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Upload exe
+      uses: actions/upload-artifact@v4
+      with:
+        name: imgchecker-exe
+        path: build/Release/*.exe

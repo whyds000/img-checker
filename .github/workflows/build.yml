@@ -9,7 +9,6 @@ jobs:
     runs-on: windows-latest
 
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       VCPKG_DEFAULT_TRIPLET: x64-windows-static
 
     steps:
@@ -19,20 +18,17 @@ jobs:
     - name: Clone vcpkg
       run: |
         git clone https://github.com/microsoft/vcpkg
-        cd vcpkg
-        .\bootstrap-vcpkg.bat
-        .\vcpkg.exe integrate install
+        .\vcpkg\bootstrap-vcpkg.bat
 
     - name: Install deps
       run: |
-        .\vcpkg\vcpkg.exe install tiff:x64-windows-static
-        .\vcpkg\vcpkg.exe install libjpeg-turbo:x64-windows-static
+        .\vcpkg\vcpkg.exe install tiff libjpeg-turbo --triplet x64-windows-static
 
     - name: Configure
       run: |
-        cmake -B build -S . ^
-        -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake ^
-        -DVCPKG_TARGET_TRIPLET=x64-windows-static
+        cmake -S . -B build `
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake `
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
     - name: Build
       run: cmake --build build --config Release
